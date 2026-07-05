@@ -311,6 +311,14 @@ function defaultsFor(method: PreviewMethod, placement: Placement): Partial<Draft
   };
 }
 
+function defaultsForUnit(method: PreviewMethod, placement: Placement, unit: Unit) {
+  const defaults = { ...defaultsFor(method, placement) };
+  if (typeof defaults.width === "number") defaults.width = convertDimensionUnit(defaults.width, "cm", unit);
+  if (typeof defaults.height === "number") defaults.height = convertDimensionUnit(defaults.height, "cm", unit);
+  if (typeof defaults.depth === "number") defaults.depth = convertDimensionUnit(defaults.depth, "cm", unit);
+  return defaults;
+}
+
 function App() {
   const [product, setProduct] = useState<DraftPreview>(loadPreview);
   const [handoffOpen, setHandoffOpen] = useState(false);
@@ -337,7 +345,7 @@ function App() {
   const setPreviewMethod = (previewMethod: PreviewMethod) => {
     setProduct((current) => ({
       ...current,
-      ...defaultsFor(previewMethod, current.placement),
+      ...defaultsForUnit(previewMethod, current.placement, current.unit),
       previewMethod,
     }));
   };
@@ -350,7 +358,7 @@ function App() {
   const setPlacement = (placement: Placement) => {
     setProduct((current) => ({
       ...current,
-      ...defaultsFor(current.previewMethod, placement),
+      ...defaultsForUnit(current.previewMethod, placement, current.unit),
       placement,
     }));
   };
@@ -739,29 +747,28 @@ function PreviewPanel({
           <p className="eyebrow">Preview</p>
           <h2>{product.name}</h2>
         </div>
-        <span className="preview-chip">
-          <Ruler size={14} />
-          {dimensionsLabel(product)}
-        </span>
+        <div className="preview-actions">
+          <span className="preview-chip">
+            <Ruler size={14} />
+            {dimensionsLabel(product)}
+          </span>
+          {product.previewMethod === "flat" && product.placement === "wall" && (
+            <label className="frame-control">
+              <input
+                checked={product.frameEnabled}
+                onChange={(event) => onUpdate({ frameEnabled: event.target.checked })}
+                type="checkbox"
+              />
+              <span>Frame</span>
+              <span className="frame-switch" aria-hidden="true" />
+            </label>
+          )}
+        </div>
       </div>
 
       <div className="preview-stage">
         <TrueSizeScene product={product} />
       </div>
-
-      {product.previewMethod === "flat" && product.placement === "wall" && (
-        <label className="toggle-row preview-toggle-row">
-          <span>
-            <strong>Frame / border</strong>
-            <small>Applies to the wall preview.</small>
-          </span>
-          <input
-            checked={product.frameEnabled}
-            onChange={(event) => onUpdate({ frameEnabled: event.target.checked })}
-            type="checkbox"
-          />
-        </label>
-      )}
     </section>
   );
 }
