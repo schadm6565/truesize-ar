@@ -1,0 +1,83 @@
+import type { ProductPreview } from "../types/product";
+
+export const imageOptions = [
+  {
+    label: "Charcoal couch",
+    value: "/product-couch.svg",
+  },
+  {
+    label: "Gallery print",
+    value: "/product-wall-print.svg",
+  },
+  {
+    label: "Standing mirror",
+    value: "/product-mirror.svg",
+  },
+  {
+    label: "Office desk",
+    value: "/product-desk.svg",
+  },
+];
+
+export const sampleProducts: ProductPreview[] = [
+  {
+    id: "charcoal-couch",
+    name: "Charcoal Couch",
+    category: "Living room",
+    previewType: "floor",
+    width: 214,
+    height: 82,
+    depth: 92,
+    unit: "cm",
+    image: "/product-couch.svg",
+    imageLabel: "Charcoal couch",
+    frameEnabled: false,
+    published: true,
+    updatedAt: "Today, 9:42 AM",
+  },
+  {
+    id: "framed-wall-print",
+    name: "Framed Wall Print",
+    category: "Decor",
+    previewType: "wall",
+    width: 70,
+    height: 100,
+    depth: 4,
+    unit: "cm",
+    image: "/product-wall-print.svg",
+    imageLabel: "Gallery print",
+    frameEnabled: true,
+    published: true,
+    updatedAt: "Yesterday, 4:18 PM",
+  },
+  {
+    id: "standing-mirror",
+    name: "Standing Mirror",
+    category: "Bedroom",
+    previewType: "wall",
+    width: 54,
+    height: 168,
+    depth: 5,
+    unit: "cm",
+    image: "/product-mirror.svg",
+    imageLabel: "Standing mirror",
+    frameEnabled: true,
+    published: false,
+    updatedAt: "Jun 28, 2:12 PM",
+  },
+  {
+    id: "office-desk",
+    name: "Office Desk",
+    category: "Workspace",
+    previewType: "floor",
+    width: 140,
+    height: 74,
+    depth: 68,
+    unit: "cm",
+    image: "/product-desk.svg",
+    imageLabel: "Office desk",
+    frameEnabled: false,
+    published: true,
+    updatedAt: "Jun 26, 10:03 AM",
+  },
+];
