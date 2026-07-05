@@ -2,7 +2,6 @@ import { Canvas, useLoader, useThree } from "@react-three/fiber";
 import { Edges, OrbitControls, PerspectiveCamera, useGLTF } from "@react-three/drei";
 import {
   Box,
-  Check,
   Copy,
   Camera,
   Frame,
@@ -25,6 +24,28 @@ const SHARE_ORIGIN = "https://truesize.builtbychad.com";
 type PreviewMethod = "flat" | "box" | "model";
 type Placement = "floor" | "wall";
 type DimensionField = "width" | "height" | "depth";
+type NativeXrMode = "starting" | "tracking" | "placed" | "fallback" | "error";
+
+type NativeXrHitTestSource = {
+  cancel?: () => void;
+};
+
+type NativeXrReferenceSpace = object;
+
+type NativeXrHitTestResult = {
+  getPose: (space: NativeXrReferenceSpace) => { transform: { matrix: Float32Array } } | null;
+};
+
+type NativeXrFrame = {
+  getHitTestResults: (source: NativeXrHitTestSource) => NativeXrHitTestResult[];
+};
+
+type NativeXrSession = {
+  addEventListener: (type: "end", listener: () => void) => void;
+  end: () => Promise<void>;
+  requestHitTestSource: (options: { space: NativeXrReferenceSpace }) => Promise<NativeXrHitTestSource>;
+  requestReferenceSpace: (type: "local" | "viewer") => Promise<NativeXrReferenceSpace>;
+};
 
 type DraftPreview = {
   id: string;
@@ -313,7 +334,6 @@ function defaultsFor(method: PreviewMethod, placement: Placement): Partial<Draft
 
 function App() {
   const [product, setProduct] = useState<DraftPreview>(loadPreview);
-  const [saved, setSaved] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const glbObjectUrlRef = useRef<string | null>(null);
@@ -379,14 +399,7 @@ function App() {
     updateProduct({ glbName: file.name, glbUrl });
   };
 
-  const savePreview = () => {
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1600);
-  };
-
   const createPreview = async () => {
-    savePreview();
-
     if (isMobileDevice()) {
       setCameraPreviewOpen(true);
       return;
@@ -400,13 +413,10 @@ function App() {
       <header className="topbar">
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true">
-            <span />
-            <span />
-            <span />
+            <Ruler size={22} strokeWidth={2.4} />
           </span>
           <span>
-            <strong>TrueSize AR</strong>
-            <small>True-size product previews</small>
+            <strong>True Size</strong>
           </span>
         </div>
       </header>
@@ -414,12 +424,8 @@ function App() {
       <main className="simple-shell">
         <section className="intro-panel">
           <div>
-            <p className="eyebrow">Configure</p>
             <h1>Create preview</h1>
           </div>
-          <p>
-            Choose a preview type, then set placement and dimensions.
-          </p>
         </section>
 
         <section className="mode-grid" aria-label="Preview method">
@@ -447,7 +453,6 @@ function App() {
         <section className="workspace-grid">
           <ConfiguratorPanel
             product={product}
-            saved={saved}
             onGlbUpload={handleGlbUpload}
             onImageUpload={handleImageUpload}
             onPlacementChange={setPlacement}
@@ -487,7 +492,6 @@ function App() {
 
 function ConfiguratorPanel({
   product,
-  saved,
   onGlbUpload,
   onImageUpload,
   onPlacementChange,
@@ -496,7 +500,6 @@ function ConfiguratorPanel({
   onUpdateDimension,
 }: {
   product: DraftPreview;
-  saved: boolean;
   onGlbUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onImageUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onPlacementChange: (placement: Placement) => void;
@@ -639,8 +642,8 @@ function ConfiguratorPanel({
 
       <div className="form-actions">
         <button className="primary-action" type="button" onClick={onCreatePreview}>
-          <Check size={17} />
-          {saved ? "Preview ready" : "Create preview"}
+          <QrCode size={17} />
+          Create preview
         </button>
       </div>
     </section>

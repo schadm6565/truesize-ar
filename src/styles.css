@@ -89,13 +89,6 @@ h2 {
   font-weight: 790;
 }
 
-.brand-lockup small {
-  display: block;
-  margin-top: 2px;
-  color: #6c766f;
-  font-size: 12px;
-}
-
 .brand-mark {
   position: relative;
   display: grid;
@@ -108,26 +101,8 @@ h2 {
   box-shadow: inset 0 0 0 5px rgba(255, 255, 255, 0.08);
 }
 
-.brand-mark span {
-  position: absolute;
-  background: #f7f5ef;
-}
-
-.brand-mark span:nth-child(1) {
-  width: 18px;
-  height: 2px;
-}
-
-.brand-mark span:nth-child(2) {
-  width: 2px;
-  height: 18px;
-}
-
-.brand-mark span:nth-child(3) {
-  width: 12px;
-  height: 12px;
-  border: 2px solid #f7f5ef;
-  background: transparent;
+.brand-mark svg {
+  color: #f7f5ef;
 }
 
 .simple-shell {
@@ -137,17 +112,7 @@ h2 {
 }
 
 .intro-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 420px);
-  gap: 14px;
-  align-items: end;
   margin-bottom: 10px;
-}
-
-.intro-panel p:not(.eyebrow) {
-  color: #5d6963;
-  font-size: 15px;
-  line-height: 1.45;
 }
 
 .eyebrow {
