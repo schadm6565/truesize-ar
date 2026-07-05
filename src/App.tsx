@@ -610,23 +610,32 @@ function SceneContent({ product }: { product: DraftPreview }) {
   const meters = getSceneDimensionsInMeters(product);
   const maxDimension = Math.max(meters.width, meters.height, meters.depth);
   const narrowCanvas = size.width < 460;
+  const isFlatWall = product.previewMethod === "flat" && product.placement === "wall";
   const maxScale = narrowCanvas ? 0.98 : 1.25;
   const fitScale = Math.min(maxScale, (narrowCanvas ? 2.15 : 2.9) / maxDimension);
   const hasWallBackdrop = product.placement === "wall";
+  const cameraPosition: [number, number, number] = isFlatWall
+    ? narrowCanvas
+      ? [3.25, 2.65, 4.75]
+      : [2.6, 2.25, 4.25]
+    : narrowCanvas
+      ? [4.6, 3.1, 5.25]
+      : [3.8, 2.7, 4.3];
+  const sceneRotation = isFlatWall ? (narrowCanvas ? -0.12 : -0.18) : narrowCanvas ? -0.2 : -0.38;
 
   return (
     <>
       <PerspectiveCamera
         makeDefault
-        position={narrowCanvas ? [4.6, 3.1, 5.25] : [3.8, 2.7, 4.3]}
-        fov={narrowCanvas ? 48 : 43}
+        position={cameraPosition}
+        fov={isFlatWall ? (narrowCanvas ? 45 : 39) : narrowCanvas ? 48 : 43}
       />
       <ambientLight intensity={0.7} />
       <directionalLight castShadow intensity={1.4} position={[3.5, 4.6, 2.4]} />
       <pointLight intensity={0.85} position={[-3, 2, -2]} />
       <group
         scale={fitScale}
-        rotation={[0, narrowCanvas ? -0.2 : -0.38, 0]}
+        rotation={[0, sceneRotation, 0]}
         position={[0, narrowCanvas ? -0.42 : -0.55, 0]}
       >
         <gridHelper args={[5.2, 13, "#9db3ad", "#e2e9e5"]} />
