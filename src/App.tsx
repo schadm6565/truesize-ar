@@ -638,6 +638,7 @@ function SceneContent({ product }: { product: DraftPreview }) {
         rotation={[0, sceneRotation, 0]}
         position={[0, narrowCanvas ? -0.42 : -0.55, 0]}
       >
+        {product.placement === "floor" && <FloorSurface dimensions={meters} />}
         <gridHelper args={[5.2, 13, "#9db3ad", "#e2e9e5"]} />
         {hasWallBackdrop && <WallBackdrop dimensions={meters} />}
         {product.previewMethod === "flat" && product.placement === "floor" && (
@@ -661,6 +662,27 @@ function SceneContent({ product }: { product: DraftPreview }) {
         maxDistance={7}
       />
     </>
+  );
+}
+
+function FloorSurface({
+  dimensions,
+}: {
+  dimensions: { width: number; height: number; depth: number };
+}) {
+  const floorSize = Math.max(4.8, dimensions.width * 1.75, dimensions.depth * 1.75);
+
+  return (
+    <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.006, 0]}>
+      <planeGeometry args={[floorSize, floorSize]} />
+      <meshStandardMaterial
+        color="#dfe9e3"
+        opacity={0.68}
+        roughness={0.92}
+        side={THREE.DoubleSide}
+        transparent
+      />
+    </mesh>
   );
 }
 
