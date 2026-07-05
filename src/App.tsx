@@ -4,6 +4,7 @@ import {
   Box,
   Check,
   Copy,
+  Camera,
   Frame,
   Image as ImageIcon,
   Package,
@@ -314,6 +315,7 @@ function App() {
   const [product, setProduct] = useState<DraftPreview>(loadPreview);
   const [saved, setSaved] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const glbObjectUrlRef = useRef<string | null>(null);
   const previewUrl = useMemo(() => getPreviewUrl(product), [product]);
 
@@ -385,17 +387,9 @@ function App() {
   const createPreview = async () => {
     savePreview();
 
-    if (isMobileDevice() && navigator.share) {
-      try {
-        await navigator.share({
-          title: product.name,
-          text: `${product.name} true-size preview`,
-          url: previewUrl,
-        });
-        return;
-      } catch {
-        // If the share sheet is dismissed, keep the in-app handoff available.
-      }
+    if (isMobileDevice()) {
+      setCameraPreviewOpen(true);
+      return;
     }
 
     setHandoffOpen(true);
@@ -473,6 +467,18 @@ function App() {
           product={product}
           url={previewUrl}
           onClose={() => setHandoffOpen(false)}
+        />
+      )}
+
+      {cameraPreviewOpen && (
+        <MobileCameraPreview
+          product={product}
+          url={previewUrl}
+          onClose={() => setCameraPreviewOpen(false)}
+          onShare={() => {
+            setCameraPreviewOpen(false);
+            setHandoffOpen(true);
+          }}
         />
       )}
     </div>
@@ -824,6 +830,122 @@ function ShareHandoffModal({
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+function MobileCameraPreview({
+  product,
+  url,
+  onClose,
+  onShare,
+}: {
+  product: DraftPreview;
+  url: string;
+  onClose: () => void;
+  onShare: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [status, setStatus] = useState<"starting" | "running" | "error">("starting");
+  const [message, setMessage] = useState("Starting camera");
+
+  useEffect(() => {
+    let active = true;
+
+    const startCamera = async () => {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setStatus("error");
+        setMessage("Camera preview needs HTTPS. Use the share link on your phone.");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            height: { ideal: 1280 },
+            width: { ideal: 720 },
+          },
+        });
+
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setStatus("running");
+        setMessage("Camera preview active");
+      } catch {
+        if (!active) return;
+        setStatus("error");
+        setMessage("Camera could not start. You can still share this preview link.");
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      active = false;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
+  const shareLink = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: product.name,
+          text: `${product.name} true-size preview`,
+          url,
+        });
+        return;
+      } catch {
+        // User dismissed the share sheet.
+      }
+    }
+
+    onShare();
+  };
+
+  return (
+    <div className="camera-preview" role="dialog" aria-modal="true" aria-label="Mobile camera preview">
+      <video ref={videoRef} className="camera-video" playsInline muted />
+      <div className="camera-shade" />
+
+      <div className="camera-topbar">
+        <span>
+          <strong>{product.name}</strong>
+          <small>{dimensionsLabel(product)}</small>
+        </span>
+        <button className="camera-icon-button" type="button" onClick={onClose} aria-label="Close">
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="camera-size-guide">
+        <span>{product.previewMethod === "flat" ? "Flat preview" : methodLabels[product.previewMethod]}</span>
+        <strong>{dimensionsLabel(product)}</strong>
+      </div>
+
+      <div className="camera-status">
+        <Camera size={17} />
+        <span>{message}</span>
+      </div>
+
+      {status === "error" && (
+        <button className="camera-share" type="button" onClick={shareLink}>
+          <Share2 size={17} />
+          Share link
+        </button>
+      )}
     </div>
   );
 }
