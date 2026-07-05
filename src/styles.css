@@ -218,6 +218,10 @@ h2 {
   align-items: start;
 }
 
+.mobile-editor-backdrop {
+  display: none;
+}
+
 .tool-panel {
   min-width: 0;
   padding: 14px;
@@ -730,9 +734,134 @@ select {
     padding-top: 14px;
   }
 
+  .intro-panel {
+    display: none;
+  }
+
   .mode-grid {
     grid-template-columns: 1fr;
     gap: 8px;
+    margin-bottom: 0;
+  }
+
+  .mode-card {
+    grid-template-columns: 40px minmax(0, 1fr);
+    min-height: 64px;
+    align-items: center;
+    padding: 12px;
+  }
+
+  .mode-card strong {
+    margin-bottom: 0;
+    font-size: 18px;
+  }
+
+  .mode-card small {
+    display: none;
+  }
+
+  .mode-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .desktop-workspace {
+    display: none;
+  }
+
+  .mobile-editor-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 64;
+    display: flex;
+    align-items: flex-end;
+    padding-top: 52px;
+    background: rgba(12, 17, 16, 0.42);
+    backdrop-filter: blur(8px);
+  }
+
+  .mobile-editor-sheet {
+    width: 100%;
+    max-height: min(88vh, 760px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid rgba(23, 32, 29, 0.12);
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+    background: #f7f5ef;
+    box-shadow: 0 -24px 60px rgba(23, 32, 29, 0.24);
+    padding: 10px 12px max(18px, env(safe-area-inset-bottom));
+  }
+
+  .sheet-grabber {
+    display: block;
+    width: 44px;
+    height: 5px;
+    margin: 0 auto 12px;
+    border-radius: 999px;
+    background: rgba(23, 32, 29, 0.18);
+  }
+
+  .sheet-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+
+  .sheet-heading .eyebrow {
+    margin-bottom: 4px;
+  }
+
+  .sheet-close {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid rgba(23, 32, 29, 0.1);
+    border-radius: 8px;
+    background: #ffffff;
+    color: #17201d;
+    cursor: pointer;
+  }
+
+  .mobile-editor-sheet .tool-panel {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .mobile-editor-sheet .config-panel {
+    position: static;
+  }
+
+  .mobile-editor-sheet .config-panel > .panel-heading {
+    display: none;
+  }
+
+  .mobile-editor-sheet .preview-panel {
+    margin-top: 14px;
+  }
+
+  .mobile-editor-sheet .preview-panel .panel-heading {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .mobile-editor-sheet .preview-stage {
+    height: 280px;
+    min-height: 240px;
+  }
+
+  .mobile-editor-sheet .form-actions {
+    display: grid;
+  }
+
+  .mobile-editor-sheet .primary-action {
+    width: 100%;
   }
 
   .preview-stage {

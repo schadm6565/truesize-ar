@@ -336,6 +336,7 @@ function App() {
   const [product, setProduct] = useState<DraftPreview>(loadPreview);
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
+  const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
   const glbObjectUrlRef = useRef<string | null>(null);
   const previewUrl = useMemo(() => getPreviewUrl(product), [product]);
 
@@ -360,6 +361,11 @@ function App() {
       ...defaultsFor(previewMethod, current.placement),
       previewMethod,
     }));
+  };
+
+  const choosePreviewMethod = (previewMethod: PreviewMethod) => {
+    setPreviewMethod(previewMethod);
+    if (isMobileDevice()) setMobileEditorOpen(true);
   };
 
   const setPlacement = (placement: Placement) => {
@@ -435,7 +441,7 @@ function App() {
               <button
                 className={`mode-card ${product.previewMethod === method ? "active" : ""}`}
                 key={method}
-                onClick={() => setPreviewMethod(method)}
+                onClick={() => choosePreviewMethod(method)}
                 type="button"
               >
                 <span className="mode-icon">
@@ -450,7 +456,7 @@ function App() {
           })}
         </section>
 
-        <section className="workspace-grid">
+        <section className="workspace-grid desktop-workspace">
           <ConfiguratorPanel
             product={product}
             onGlbUpload={handleGlbUpload}
@@ -466,6 +472,19 @@ function App() {
           />
         </section>
       </main>
+
+      {mobileEditorOpen && (
+        <MobileEditorSheet
+          product={product}
+          onClose={() => setMobileEditorOpen(false)}
+          onGlbUpload={handleGlbUpload}
+          onImageUpload={handleImageUpload}
+          onPlacementChange={setPlacement}
+          onCreatePreview={createPreview}
+          onUpdate={updateProduct}
+          onUpdateDimension={updateDimension}
+        />
+      )}
 
       {handoffOpen && (
         <ShareHandoffModal
@@ -486,6 +505,70 @@ function App() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function MobileEditorSheet({
+  product,
+  onClose,
+  onGlbUpload,
+  onImageUpload,
+  onPlacementChange,
+  onCreatePreview,
+  onUpdate,
+  onUpdateDimension,
+}: {
+  product: DraftPreview;
+  onClose: () => void;
+  onGlbUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+  onImageUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+  onPlacementChange: (placement: Placement) => void;
+  onCreatePreview: () => void;
+  onUpdate: (patch: Partial<DraftPreview>) => void;
+  onUpdateDimension: (field: DimensionField, value: string) => void;
+}) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className="mobile-editor-backdrop"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="mobile-editor-sheet" role="dialog" aria-modal="true" aria-label="Preview details">
+        <span className="sheet-grabber" aria-hidden="true" />
+        <div className="sheet-heading">
+          <div>
+            <p className="eyebrow">Details</p>
+            <h2>{methodLabels[product.previewMethod]}</h2>
+          </div>
+          <button className="sheet-close" type="button" onClick={onClose} aria-label="Close details">
+            <X size={20} />
+          </button>
+        </div>
+
+        <ConfiguratorPanel
+          product={product}
+          onGlbUpload={onGlbUpload}
+          onImageUpload={onImageUpload}
+          onPlacementChange={onPlacementChange}
+          onCreatePreview={onCreatePreview}
+          onUpdate={onUpdate}
+          onUpdateDimension={onUpdateDimension}
+        />
+
+        <PreviewPanel product={product} />
+      </section>
     </div>
   );
 }
