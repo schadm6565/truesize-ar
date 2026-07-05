@@ -512,13 +512,6 @@ function ConfiguratorPanel({
           </div>
         )}
 
-        {product.previewMethod === "box" && (
-          <div className="method-note">
-            <Box size={17} />
-            <span>No image needed. This preview uses a true-size footprint and transparent volume.</span>
-          </div>
-        )}
-
         {product.previewMethod === "model" && (
           <div className="field-group">
             <span className="field-heading">3D model</span>
