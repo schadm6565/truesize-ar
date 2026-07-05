@@ -448,6 +448,7 @@ function App() {
 
           <PreviewPanel
             product={product}
+            onUpdate={updateProduct}
           />
         </section>
       </main>
@@ -546,7 +547,7 @@ function MobileEditorSheet({
           onUpdateDimension={onUpdateDimension}
         />
 
-        <PreviewPanel product={product} />
+        <PreviewPanel product={product} onUpdate={onUpdate} />
       </section>
     </div>
   );
@@ -687,19 +688,6 @@ function ConfiguratorPanel({
           </div>
         )}
 
-        {product.previewMethod === "flat" && product.placement === "wall" && (
-          <label className="toggle-row">
-            <span>
-              <strong>Frame / border</strong>
-              <small>Best for flat wall pieces and mounted images.</small>
-            </span>
-            <input
-              checked={product.frameEnabled}
-              onChange={(event) => onUpdate({ frameEnabled: event.target.checked })}
-              type="checkbox"
-            />
-          </label>
-        )}
       </div>
 
       <div className="form-actions">
@@ -737,7 +725,13 @@ function DimensionInput({
   );
 }
 
-function PreviewPanel({ product }: { product: DraftPreview }) {
+function PreviewPanel({
+  product,
+  onUpdate,
+}: {
+  product: DraftPreview;
+  onUpdate: (patch: Partial<DraftPreview>) => void;
+}) {
   return (
     <section className="tool-panel preview-panel">
       <div className="panel-heading">
@@ -754,6 +748,20 @@ function PreviewPanel({ product }: { product: DraftPreview }) {
       <div className="preview-stage">
         <TrueSizeScene product={product} />
       </div>
+
+      {product.previewMethod === "flat" && product.placement === "wall" && (
+        <label className="toggle-row preview-toggle-row">
+          <span>
+            <strong>Frame / border</strong>
+            <small>Applies to the wall preview.</small>
+          </span>
+          <input
+            checked={product.frameEnabled}
+            onChange={(event) => onUpdate({ frameEnabled: event.target.checked })}
+            type="checkbox"
+          />
+        </label>
+      )}
     </section>
   );
 }

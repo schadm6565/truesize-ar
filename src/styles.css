@@ -215,7 +215,7 @@ h2 {
   display: grid;
   grid-template-columns: minmax(0, 370px) minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .mobile-editor-backdrop {
@@ -229,6 +229,7 @@ h2 {
 
 .config-panel {
   position: sticky;
+  align-self: stretch;
   top: 16px;
 }
 
@@ -458,11 +459,14 @@ select {
 }
 
 .preview-panel {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
 .preview-stage {
   position: relative;
+  flex: 1 1 auto;
   overflow: hidden;
   height: min(38vh, 360px);
   min-height: 280px;
@@ -476,6 +480,11 @@ select {
   height: 100%;
   background:
     linear-gradient(180deg, #f8fbf8 0%, #e7efeb 58%, #d9e5df 100%);
+}
+
+.preview-toggle-row {
+  flex: 0 0 auto;
+  margin-top: 12px;
 }
 
 .handoff-backdrop {
