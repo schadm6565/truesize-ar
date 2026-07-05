@@ -1,5 +1,5 @@
 import { Canvas, useLoader, useThree } from "@react-three/fiber";
-import { Edges, OrbitControls, PerspectiveCamera } from "@react-three/drei";
+import { Edges, OrbitControls, PerspectiveCamera, useGLTF } from "@react-three/drei";
 import {
   Box,
   Check,
@@ -12,7 +12,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { Unit } from "./types/product";
 
@@ -35,6 +35,7 @@ type DraftPreview = {
   imageLabel: string;
   frameEnabled: boolean;
   glbName?: string;
+  glbUrl?: string;
 };
 
 type Xr8Like = {
@@ -122,7 +123,9 @@ function loadPreview() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (!stored) return defaultPreview;
-    return { ...defaultPreview, ...(JSON.parse(stored) as Partial<DraftPreview>) };
+    const parsed = JSON.parse(stored) as Partial<DraftPreview>;
+    const { glbName: _discardedGlbName, glbUrl: _discardedGlbUrl, ...persistable } = parsed;
+    return { ...defaultPreview, ...persistable };
   } catch {
     return defaultPreview;
   }
@@ -247,10 +250,18 @@ function App() {
   const [product, setProduct] = useState<DraftPreview>(loadPreview);
   const [saved, setSaved] = useState(false);
   const [arModalOpen, setArModalOpen] = useState(false);
+  const glbObjectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(product));
+    const { glbName: _discardedGlbName, glbUrl: _discardedGlbUrl, ...persistable } = product;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
   }, [product]);
+
+  useEffect(() => {
+    return () => {
+      if (glbObjectUrlRef.current) URL.revokeObjectURL(glbObjectUrlRef.current);
+    };
+  }, []);
 
   const updateProduct = (patch: Partial<DraftPreview>) => {
     setProduct((current) => ({ ...current, ...patch }));
@@ -294,7 +305,11 @@ function App() {
   const handleGlbUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    updateProduct({ glbName: file.name });
+
+    if (glbObjectUrlRef.current) URL.revokeObjectURL(glbObjectUrlRef.current);
+    const glbUrl = URL.createObjectURL(file);
+    glbObjectUrlRef.current = glbUrl;
+    updateProduct({ glbName: file.name, glbUrl });
   };
 
   const savePreview = () => {
@@ -650,9 +665,20 @@ function SceneContent({ product }: { product: DraftPreview }) {
         {product.previewMethod === "box" && (
           <SizeBox dimensions={meters} wallMounted={product.placement === "wall"} />
         )}
-        {product.previewMethod === "model" && (
-          <ModelPlaceholder dimensions={meters} wallMounted={product.placement === "wall"} />
-        )}
+        {product.previewMethod === "model" &&
+          (product.glbUrl ? (
+            <Suspense
+              fallback={<ModelPlaceholder dimensions={meters} wallMounted={product.placement === "wall"} />}
+            >
+              <UploadedModel
+                dimensions={meters}
+                url={product.glbUrl}
+                wallMounted={product.placement === "wall"}
+              />
+            </Suspense>
+          ) : (
+            <ModelPlaceholder dimensions={meters} wallMounted={product.placement === "wall"} />
+          ))}
       </group>
       <OrbitControls
         autoRotate={false}
@@ -893,10 +919,47 @@ function ModelPlaceholder({
         <meshStandardMaterial color="#dbe5e1" metalness={0.08} roughness={0.42} />
         <Edges color="#2d6258" scale={1.004} threshold={10} />
       </mesh>
-      <mesh castShadow position={[0, dimensions.height + 0.06, 0]}>
-        <boxGeometry args={[dimensions.width * 0.72, 0.08, dimensions.depth * 0.72]} />
-        <meshStandardMaterial color="#d96f32" roughness={0.5} />
-      </mesh>
+    </group>
+  );
+}
+
+function UploadedModel({
+  dimensions,
+  url,
+  wallMounted = false,
+}: {
+  dimensions: { width: number; height: number; depth: number };
+  url: string;
+  wallMounted?: boolean;
+}) {
+  const gltf = useGLTF(url) as { scene: THREE.Group };
+  const preparedScene = useMemo(() => {
+    const scene = gltf.scene.clone(true);
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const scale = Math.min(
+      dimensions.width / Math.max(size.x, 0.001),
+      dimensions.height / Math.max(size.y, 0.001),
+      dimensions.depth / Math.max(size.z, 0.001),
+    );
+
+    scene.position.sub(center);
+    scene.scale.setScalar(scale);
+    scene.traverse((object) => {
+      if ("isMesh" in object && object.isMesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+
+    return scene;
+  }, [dimensions.depth, dimensions.height, dimensions.width, gltf.scene]);
+  const yOffset = wallMounted ? 0.45 : 0;
+
+  return (
+    <group position={[0, yOffset + dimensions.height / 2, 0]}>
+      <primitive object={preparedScene} />
     </group>
   );
 }
