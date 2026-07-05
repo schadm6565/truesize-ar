@@ -21,7 +21,6 @@ const STORAGE_KEY = "truesize-ar-method-v3";
 type PreviewMethod = "flat" | "box" | "model";
 type Placement = "floor" | "wall";
 type DimensionField = "width" | "height" | "depth";
-type ArStatus = "checking" | "ready" | "starting" | "running" | "fallback" | "error";
 
 type DraftPreview = {
   id: string;
@@ -248,38 +247,10 @@ function App() {
   const [product, setProduct] = useState<DraftPreview>(loadPreview);
   const [saved, setSaved] = useState(false);
   const [arModalOpen, setArModalOpen] = useState(false);
-  const [arState, setArState] = useState<ArStatus>(() =>
-    typeof window !== "undefined" && isEightWallReady() ? "ready" : "checking",
-  );
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(product));
   }, [product]);
-
-  useEffect(() => {
-    let mounted = true;
-    const markReady = () => {
-      if (mounted) setArState("ready");
-    };
-
-    if (isEightWallReady()) {
-      markReady();
-      return () => {
-        mounted = false;
-      };
-    }
-
-    window.addEventListener("xrloaded", markReady);
-    const timeout = window.setTimeout(() => {
-      if (mounted && !isEightWallReady()) setArState("fallback");
-    }, 2400);
-
-    return () => {
-      mounted = false;
-      window.clearTimeout(timeout);
-      window.removeEventListener("xrloaded", markReady);
-    };
-  }, []);
 
   const updateProduct = (patch: Partial<DraftPreview>) => {
     setProduct((current) => ({ ...current, ...patch }));
@@ -333,11 +304,9 @@ function App() {
 
   const openAr = () => {
     if (isEightWallReady()) {
-      setArState("starting");
       setArModalOpen(true);
       return;
     }
-    setArState("fallback");
   };
 
   return (
@@ -414,11 +383,7 @@ function App() {
           onClose={() => {
             stopEightWallSession();
             setArModalOpen(false);
-            setArState("ready");
           }}
-          onError={() => setArState("error")}
-          onRunning={() => setArState("running")}
-          onStarting={() => setArState("starting")}
         />
       )}
     </div>
@@ -554,7 +519,7 @@ function ConfiguratorPanel({
           <label className="toggle-row">
             <span>
               <strong>Frame / border</strong>
-              <small>Best for prints, mirrors, and wall-mounted images.</small>
+              <small>Best for flat wall pieces and mounted images.</small>
             </span>
             <input
               checked={product.frameEnabled}
@@ -836,15 +801,9 @@ function ModelPlaceholder({
 function EightWallArModal({
   product,
   onClose,
-  onError,
-  onRunning,
-  onStarting,
 }: {
   product: DraftPreview;
   onClose: () => void;
-  onError: () => void;
-  onRunning: () => void;
-  onStarting: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [message, setMessage] = useState("Starting world tracking");
@@ -854,18 +813,14 @@ function EightWallArModal({
     if (!canvas) return undefined;
 
     let active = true;
-    onStarting();
-
     startEightWallSession(product, canvas)
       .then(() => {
         if (!active) return;
         setMessage("Move your phone to find the floor");
-        onRunning();
       })
       .catch((error: unknown) => {
         if (!active) return;
         setMessage(error instanceof Error ? error.message : "AR could not start on this device");
-        onError();
       });
 
     return () => {
@@ -875,7 +830,7 @@ function EightWallArModal({
   }, [product.id]);
 
   return (
-    <div className="ar-modal" role="dialog" aria-modal="true" aria-label="8th Wall AR preview">
+    <div className="ar-modal" role="dialog" aria-modal="true" aria-label="Camera AR preview">
       <canvas ref={canvasRef} className="ar-camera-canvas" />
       <div className="ar-modal-topbar">
         <span className="ar-modal-product">
