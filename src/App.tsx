@@ -22,7 +22,7 @@ import type { Unit } from "./types/product";
 const STORAGE_KEY = "truesize-ar-method-v3";
 const SHARE_ORIGIN = "https://truesize.builtbychad.com";
 
-type PreviewMethod = "flat" | "box" | "model";
+type PreviewMethod = "flat" | "box";
 type Placement = "floor" | "wall";
 type DimensionField = "width" | "height" | "depth";
 type NativeXrMode = "starting" | "tracking" | "placed" | "fallback" | "error";
@@ -46,19 +46,16 @@ type DraftPreview = {
 const methodLabels: Record<PreviewMethod, string> = {
   flat: "Flat image",
   box: "Size box",
-  model: "3D model",
 };
 
 const methodDescriptions: Record<PreviewMethod, string> = {
   flat: "Use an uploaded image for flat products such as mats, prints, signs, and decals.",
-  box: "Use a true-size box for bulky products where an image is not enough.",
-  model: "Upload a GLB and scale it for floor or wall placement.",
+  box: "Use a true-size box for bulky products, or attach an optional GLB model.",
 };
 
 const methodIcons: Record<PreviewMethod, typeof Box> = {
   flat: ImageIcon,
   box: Box,
-  model: Package,
 };
 
 const placementLabels: Record<Placement, string> = {
@@ -67,7 +64,7 @@ const placementLabels: Record<Placement, string> = {
 };
 
 const unitOptions: Unit[] = ["in", "ft", "m", "cm", "mm"];
-const previewMethods: PreviewMethod[] = ["flat", "box", "model"];
+const previewMethods: PreviewMethod[] = ["flat", "box"];
 const placements: Placement[] = ["floor", "wall"];
 
 const defaultPreview: DraftPreview = {
@@ -95,7 +92,11 @@ function loadPreview() {
     if (!stored) return defaultPreview;
     const parsed = JSON.parse(stored) as Partial<DraftPreview>;
     const { glbName: _discardedGlbName, glbUrl: _discardedGlbUrl, ...persistable } = parsed;
-    return { ...defaultPreview, ...persistable };
+    return {
+      ...defaultPreview,
+      ...persistable,
+      previewMethod: parsePreviewMethod(persistable.previewMethod ?? null),
+    };
   } catch {
     return defaultPreview;
   }
@@ -124,6 +125,7 @@ function loadPreviewFromUrl() {
 }
 
 function parsePreviewMethod(value: string | null): PreviewMethod {
+  if (value === "model") return "box";
   return previewMethods.includes(value as PreviewMethod) ? (value as PreviewMethod) : defaultPreview.previewMethod;
 }
 
@@ -391,6 +393,13 @@ function App() {
     const glbUrl = URL.createObjectURL(file);
     glbObjectUrlRef.current = glbUrl;
     updateProduct({ glbName: file.name, glbUrl });
+    event.currentTarget.value = "";
+  };
+
+  const clearGlbUpload = () => {
+    if (glbObjectUrlRef.current) URL.revokeObjectURL(glbObjectUrlRef.current);
+    glbObjectUrlRef.current = null;
+    updateProduct({ glbName: undefined, glbUrl: undefined });
   };
 
   const createPreview = async () => {
@@ -467,6 +476,7 @@ function App() {
         <section className="workspace-grid desktop-workspace">
           <ConfiguratorPanel
             product={product}
+            onGlbClear={clearGlbUpload}
             onGlbUpload={handleGlbUpload}
             onImageUpload={handleImageUpload}
             onPlacementChange={setPlacement}
@@ -486,6 +496,7 @@ function App() {
         <MobileEditorSheet
           product={product}
           onClose={() => setMobileEditorOpen(false)}
+          onGlbClear={clearGlbUpload}
           onGlbUpload={handleGlbUpload}
           onImageUpload={handleImageUpload}
           onPlacementChange={setPlacement}
@@ -521,6 +532,7 @@ function App() {
 function MobileEditorSheet({
   product,
   onClose,
+  onGlbClear,
   onGlbUpload,
   onImageUpload,
   onPlacementChange,
@@ -530,6 +542,7 @@ function MobileEditorSheet({
 }: {
   product: DraftPreview;
   onClose: () => void;
+  onGlbClear: () => void;
   onGlbUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onImageUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onPlacementChange: (placement: Placement) => void;
@@ -568,6 +581,7 @@ function MobileEditorSheet({
 
         <ConfiguratorPanel
           product={product}
+          onGlbClear={onGlbClear}
           onGlbUpload={onGlbUpload}
           onImageUpload={onImageUpload}
           onPlacementChange={onPlacementChange}
@@ -584,6 +598,7 @@ function MobileEditorSheet({
 
 function ConfiguratorPanel({
   product,
+  onGlbClear,
   onGlbUpload,
   onImageUpload,
   onPlacementChange,
@@ -592,6 +607,7 @@ function ConfiguratorPanel({
   onUpdateDimension,
 }: {
   product: DraftPreview;
+  onGlbClear: () => void;
   onGlbUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onImageUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onPlacementChange: (placement: Placement) => void;
@@ -706,14 +722,27 @@ function ConfiguratorPanel({
           </div>
         )}
 
-        {product.previewMethod === "model" && (
+        {product.previewMethod === "box" && (
           <div className="field-group">
-            <span className="field-heading">3D model</span>
-            <label className="upload-control glb-upload">
-              <Package size={17} />
-              <span>{product.glbName ? product.glbName : "Upload GLB model"}</span>
-              <input accept=".glb,model/gltf-binary" onChange={onGlbUpload} type="file" />
-            </label>
+            <span className="field-heading">Optional 3D model</span>
+            <div className="model-upload-row">
+              <label className="upload-control glb-upload">
+                <Package size={17} />
+                <span>{product.glbName ? product.glbName : "Upload GLB model"}</span>
+                <input accept=".glb,model/gltf-binary" onChange={onGlbUpload} type="file" />
+              </label>
+              {product.glbName && (
+                <button
+                  className="clear-model-button"
+                  type="button"
+                  onClick={onGlbClear}
+                  aria-label="Clear GLB model"
+                  title="Clear GLB model"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -1417,13 +1446,10 @@ function SceneContent({ product }: { product: DraftPreview }) {
         {product.previewMethod === "flat" && product.placement === "wall" && (
           <FlatWallImage product={product} dimensions={meters} />
         )}
-        {product.previewMethod === "box" && (
-          <SizeBox dimensions={meters} wallMounted={product.placement === "wall"} />
-        )}
-        {product.previewMethod === "model" &&
+        {product.previewMethod === "box" &&
           (product.glbUrl ? (
             <Suspense
-              fallback={<ModelPlaceholder dimensions={meters} wallMounted={product.placement === "wall"} />}
+              fallback={<SizeBox dimensions={meters} wallMounted={product.placement === "wall"} />}
             >
               <UploadedModel
                 dimensions={meters}
@@ -1432,7 +1458,7 @@ function SceneContent({ product }: { product: DraftPreview }) {
               />
             </Suspense>
           ) : (
-            <ModelPlaceholder dimensions={meters} wallMounted={product.placement === "wall"} />
+            <SizeBox dimensions={meters} wallMounted={product.placement === "wall"} />
           ))}
       </group>
       <OrbitControls
@@ -1644,35 +1670,6 @@ function SizeBox({
           transparent
         />
         <Edges color="#1f4d45" scale={1.006} threshold={10} />
-      </mesh>
-    </group>
-  );
-}
-
-function ModelPlaceholder({
-  dimensions,
-  wallMounted = false,
-}: {
-  dimensions: { width: number; height: number; depth: number };
-  wallMounted?: boolean;
-}) {
-  const modelArgs: [number, number, number] = [
-    dimensions.width,
-    dimensions.height,
-    dimensions.depth,
-  ];
-  const yOffset = wallMounted ? 0.45 : 0;
-
-  return (
-    <group position={[0, yOffset, 0]}>
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <planeGeometry args={[dimensions.width, dimensions.depth]} />
-        <meshStandardMaterial color="#cfe8d8" opacity={0.35} transparent />
-      </mesh>
-      <mesh castShadow position={[0, dimensions.height / 2, 0]}>
-        <boxGeometry args={modelArgs} />
-        <meshStandardMaterial color="#dbe5e1" metalness={0.08} roughness={0.42} />
-        <Edges color="#2d6258" scale={1.004} threshold={10} />
       </mesh>
     </group>
   );
