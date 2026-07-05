@@ -911,12 +911,8 @@ function ShareHandoffModal({
 
         <strong className="handoff-dimensions">{dimensionsLabel(product)}</strong>
         <p className="handoff-copy">
-          Scan with your phone to open this true-size preview, or copy the link below.
+          Scan with your phone to open this true-size preview, or copy the preview link.
         </p>
-
-        <div className="preview-link" title={url}>
-          {url}
-        </div>
 
         <div className="handoff-actions">
           <button className="primary-action" type="button" onClick={copyLink}>
