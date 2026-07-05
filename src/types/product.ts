@@ -1,5 +1,5 @@
 export type PreviewType = "floor" | "wall" | "model";
-export type Unit = "cm" | "in";
+export type Unit = "in" | "ft" | "m" | "cm" | "mm";
 
 export type ProductPreview = {
   id: string;

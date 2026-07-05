@@ -3,20 +3,23 @@ import { Edges, OrbitControls, PerspectiveCamera, useGLTF } from "@react-three/d
 import {
   Box,
   Check,
-  Crosshair,
+  Copy,
   Frame,
   Image as ImageIcon,
   Package,
+  QrCode,
   Ruler,
-  Smartphone,
+  Share2,
   Upload,
   X,
 } from "lucide-react";
 import { ChangeEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import QRCode from "qrcode";
 import type { Unit } from "./types/product";
 
 const STORAGE_KEY = "truesize-ar-method-v3";
+const SHARE_ORIGIN = "https://truesize.builtbychad.com";
 
 type PreviewMethod = "flat" | "box" | "model";
 type Placement = "floor" | "wall";
@@ -37,48 +40,6 @@ type DraftPreview = {
   glbName?: string;
   glbUrl?: string;
 };
-
-type Xr8Like = {
-  addCameraPipelineModules: (modules: unknown[]) => void;
-  run: (options: { canvas: HTMLCanvasElement; allowedDevices?: unknown }) => void;
-  stop?: () => void;
-  loadChunk?: (chunk: "slam") => Promise<void>;
-  GlTextureRenderer?: { pipelineModule: () => unknown };
-  Threejs?: {
-    pipelineModule: () => unknown;
-    xrScene: () => {
-      scene: THREE.Scene;
-      camera: THREE.PerspectiveCamera;
-      renderer: THREE.WebGLRenderer;
-    };
-  };
-  XrController?: {
-    pipelineModule: () => unknown;
-    updateCameraProjectionMatrix: (options: {
-      origin: THREE.Vector3;
-      facing: THREE.Quaternion;
-    }) => void;
-    recenter?: () => void;
-  };
-  XrConfig?: { device: () => { ANY: unknown } };
-};
-
-type PipelineGlobal = {
-  pipelineModule?: () => unknown;
-};
-
-declare global {
-  interface Window {
-    XR8?: Xr8Like;
-    XRExtras?: {
-      FullWindowCanvas?: PipelineGlobal;
-      Loading?: PipelineGlobal;
-      RuntimeError?: PipelineGlobal;
-    };
-    LandingPage?: PipelineGlobal;
-    THREE?: typeof THREE;
-  }
-}
 
 const methodLabels: Record<PreviewMethod, string> = {
   flat: "Flat image",
@@ -103,6 +64,10 @@ const placementLabels: Record<Placement, string> = {
   wall: "Wall",
 };
 
+const unitOptions: Unit[] = ["in", "ft", "m", "cm", "mm"];
+const previewMethods: PreviewMethod[] = ["flat", "box", "model"];
+const placements: Placement[] = ["floor", "wall"];
+
 const defaultPreview: DraftPreview = {
   id: "truesize-preview",
   name: "Product preview",
@@ -120,6 +85,9 @@ const defaultPreview: DraftPreview = {
 function loadPreview() {
   if (typeof window === "undefined") return defaultPreview;
 
+  const previewFromUrl = loadPreviewFromUrl();
+  if (previewFromUrl) return previewFromUrl;
+
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (!stored) return defaultPreview;
@@ -131,8 +99,112 @@ function loadPreview() {
   }
 }
 
+function loadPreviewFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const hasPreviewParams = params.has("mode") || params.has("w") || params.has("unit");
+  if (!hasPreviewParams) return null;
+
+  const previewMethod = parsePreviewMethod(params.get("mode"));
+  const placement = parsePlacement(params.get("place"));
+  const unit = parseUnit(params.get("unit"));
+
+  return {
+    ...defaultPreview,
+    previewMethod,
+    placement,
+    unit,
+    name: params.get("name") || defaultPreview.name,
+    width: parseDimensionParam(params.get("w"), defaultPreview.width),
+    height: parseDimensionParam(params.get("h"), defaultPreview.height),
+    depth: parseDimensionParam(params.get("d"), defaultPreview.depth),
+    frameEnabled: params.get("frame") === "1",
+  };
+}
+
+function parsePreviewMethod(value: string | null): PreviewMethod {
+  return previewMethods.includes(value as PreviewMethod) ? (value as PreviewMethod) : defaultPreview.previewMethod;
+}
+
+function parsePlacement(value: string | null): Placement {
+  return placements.includes(value as Placement) ? (value as Placement) : defaultPreview.placement;
+}
+
+function parseUnit(value: string | null): Unit {
+  return unitOptions.includes(value as Unit) ? (value as Unit) : defaultPreview.unit;
+}
+
+function parseDimensionParam(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getShareOrigin() {
+  if (typeof window === "undefined") return SHARE_ORIGIN;
+  const { hostname, origin } = window.location;
+  return hostname === "localhost" || hostname === "127.0.0.1" ? SHARE_ORIGIN : origin;
+}
+
+function getPreviewUrl(product: DraftPreview) {
+  const url = new URL("/", getShareOrigin());
+  url.searchParams.set("mode", product.previewMethod);
+  url.searchParams.set("place", product.placement);
+  url.searchParams.set("name", product.name);
+  url.searchParams.set("w", formatDimension(product.width));
+  url.searchParams.set("h", formatDimension(product.height));
+  url.searchParams.set("unit", product.unit);
+  if (product.previewMethod !== "flat") url.searchParams.set("d", formatDimension(product.depth));
+  if (product.previewMethod === "flat" && product.placement === "wall" && product.frameEnabled) {
+    url.searchParams.set("frame", "1");
+  }
+  return url.toString();
+}
+
+function isMobileDevice() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 760;
+}
+
 function toCentimeters(value: number, unit: Unit) {
-  return unit === "in" ? value * 2.54 : value;
+  switch (unit) {
+    case "in":
+      return value * 2.54;
+    case "ft":
+      return value * 30.48;
+    case "m":
+      return value * 100;
+    case "mm":
+      return value / 10;
+    case "cm":
+      return value;
+  }
+}
+
+function fromCentimeters(value: number, unit: Unit) {
+  switch (unit) {
+    case "in":
+      return value / 2.54;
+    case "ft":
+      return value / 30.48;
+    case "m":
+      return value / 100;
+    case "mm":
+      return value * 10;
+    case "cm":
+      return value;
+  }
+}
+
+function normalizeDimension(value: number, unit: Unit) {
+  const decimals = unit === "mm" ? 0 : unit === "cm" ? 1 : 2;
+  return Number(value.toFixed(decimals));
+}
+
+function convertDimensionUnit(value: number, fromUnit: Unit, toUnit: Unit) {
+  return normalizeDimension(fromCentimeters(toCentimeters(value, fromUnit), toUnit), toUnit);
+}
+
+function dimensionInputStep(unit: Unit) {
+  return unit === "mm" || unit === "cm" ? 1 : 0.01;
 }
 
 function getDimensionsInCm(product: DraftPreview) {
@@ -170,7 +242,7 @@ function getSceneDimensionsInMeters(product: DraftPreview) {
 }
 
 function formatDimension(value: number) {
-  return Number.isInteger(value) ? `${value}` : value.toFixed(1);
+  return Number.isInteger(value) ? `${value}` : `${Number(value.toFixed(2))}`;
 }
 
 function secondDimensionLabel(product: DraftPreview) {
@@ -182,14 +254,6 @@ function dimensionsLabel(product: DraftPreview) {
   const pieces = [`W ${formatDimension(product.width)}`, `${secondLabel} ${formatDimension(product.height)}`];
   if (product.previewMethod !== "flat") pieces.push(`D ${formatDimension(product.depth)}`);
   return `${pieces.join(" x ")} ${product.unit}`;
-}
-
-function isEightWallReady() {
-  return Boolean(
-    window.XR8?.GlTextureRenderer &&
-      window.XR8?.Threejs &&
-      window.XR8?.XrController,
-  );
 }
 
 function defaultsFor(method: PreviewMethod, placement: Placement): Partial<DraftPreview> {
@@ -249,8 +313,9 @@ function defaultsFor(method: PreviewMethod, placement: Placement): Partial<Draft
 function App() {
   const [product, setProduct] = useState<DraftPreview>(loadPreview);
   const [saved, setSaved] = useState(false);
-  const [arModalOpen, setArModalOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const glbObjectUrlRef = useRef<string | null>(null);
+  const previewUrl = useMemo(() => getPreviewUrl(product), [product]);
 
   useEffect(() => {
     const { glbName: _discardedGlbName, glbUrl: _discardedGlbUrl, ...persistable } = product;
@@ -317,11 +382,23 @@ function App() {
     window.setTimeout(() => setSaved(false), 1600);
   };
 
-  const openAr = () => {
-    if (isEightWallReady()) {
-      setArModalOpen(true);
-      return;
+  const createPreview = async () => {
+    savePreview();
+
+    if (isMobileDevice() && navigator.share) {
+      try {
+        await navigator.share({
+          title: product.name,
+          text: `${product.name} true-size preview`,
+          url: previewUrl,
+        });
+        return;
+      } catch {
+        // If the share sheet is dismissed, keep the in-app handoff available.
+      }
     }
+
+    setHandoffOpen(true);
   };
 
   return (
@@ -344,10 +421,10 @@ function App() {
         <section className="intro-panel">
           <div>
             <p className="eyebrow">Configure</p>
-            <h1>Create a true-size product preview</h1>
+            <h1>Create preview</h1>
           </div>
           <p>
-            Choose how the product should be represented, then place it on the floor or wall.
+            Choose a preview type, then set placement and dimensions.
           </p>
         </section>
 
@@ -380,25 +457,22 @@ function App() {
             onGlbUpload={handleGlbUpload}
             onImageUpload={handleImageUpload}
             onPlacementChange={setPlacement}
-            onSave={savePreview}
+            onCreatePreview={createPreview}
             onUpdate={updateProduct}
             onUpdateDimension={updateDimension}
           />
 
           <PreviewPanel
             product={product}
-            onOpenAr={openAr}
           />
         </section>
       </main>
 
-      {arModalOpen && (
-        <EightWallArModal
+      {handoffOpen && (
+        <ShareHandoffModal
           product={product}
-          onClose={() => {
-            stopEightWallSession();
-            setArModalOpen(false);
-          }}
+          url={previewUrl}
+          onClose={() => setHandoffOpen(false)}
         />
       )}
     </div>
@@ -411,7 +485,7 @@ function ConfiguratorPanel({
   onGlbUpload,
   onImageUpload,
   onPlacementChange,
-  onSave,
+  onCreatePreview,
   onUpdate,
   onUpdateDimension,
 }: {
@@ -420,10 +494,23 @@ function ConfiguratorPanel({
   onGlbUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onImageUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onPlacementChange: (placement: Placement) => void;
-  onSave: () => void;
+  onCreatePreview: () => void;
   onUpdate: (patch: Partial<DraftPreview>) => void;
   onUpdateDimension: (field: DimensionField, value: string) => void;
 }) {
+  const unitStep = dimensionInputStep(product.unit);
+
+  const changeUnit = (unit: Unit) => {
+    if (unit === product.unit) return;
+
+    onUpdate({
+      unit,
+      width: convertDimensionUnit(product.width, product.unit, unit),
+      height: convertDimensionUnit(product.height, product.unit, unit),
+      depth: convertDimensionUnit(product.depth, product.unit, unit),
+    });
+  };
+
   return (
     <section className="tool-panel config-panel">
       <div className="panel-heading">
@@ -473,27 +560,33 @@ function ConfiguratorPanel({
             <select
               aria-label="Unit"
               value={product.unit}
-              onChange={(event) => onUpdate({ unit: event.target.value as Unit })}
+              onChange={(event) => changeUnit(event.target.value as Unit)}
             >
-              <option value="cm">cm</option>
-              <option value="in">in</option>
+              {unitOptions.map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
             </select>
           </div>
 
           <div className="dimension-grid">
             <DimensionInput
               label="Width"
+              step={unitStep}
               value={product.width}
               onChange={(value) => onUpdateDimension("width", value)}
             />
             <DimensionInput
               label={secondDimensionLabel(product)}
+              step={unitStep}
               value={product.height}
               onChange={(value) => onUpdateDimension("height", value)}
             />
             {product.previewMethod !== "flat" && (
               <DimensionInput
                 label="Depth"
+                step={unitStep}
                 value={product.depth}
                 onChange={(value) => onUpdateDimension("depth", value)}
               />
@@ -539,9 +632,9 @@ function ConfiguratorPanel({
       </div>
 
       <div className="form-actions">
-        <button className="primary-action" type="button" onClick={onSave}>
+        <button className="primary-action" type="button" onClick={onCreatePreview}>
           <Check size={17} />
-          {saved ? "Saved" : "Save preview"}
+          {saved ? "Preview ready" : "Create preview"}
         </button>
       </div>
     </section>
@@ -550,10 +643,12 @@ function ConfiguratorPanel({
 
 function DimensionInput({
   label,
+  step,
   value,
   onChange,
 }: {
   label: string;
+  step: number;
   value: number;
   onChange: (value: string) => void;
 }) {
@@ -562,7 +657,7 @@ function DimensionInput({
       <span>{label}</span>
       <input
         min={0}
-        step={1}
+        step={step}
         type="number"
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -571,13 +666,7 @@ function DimensionInput({
   );
 }
 
-function PreviewPanel({
-  product,
-  onOpenAr,
-}: {
-  product: DraftPreview;
-  onOpenAr: () => void;
-}) {
+function PreviewPanel({ product }: { product: DraftPreview }) {
   return (
     <section className="tool-panel preview-panel">
       <div className="panel-heading">
@@ -594,14 +683,148 @@ function PreviewPanel({
       <div className="preview-stage">
         <TrueSizeScene product={product} />
       </div>
-
-      <div className="preview-actions">
-        <button className="primary-action wide" type="button" onClick={onOpenAr}>
-          <Smartphone size={18} />
-          View in your space
-        </button>
-      </div>
     </section>
+  );
+}
+
+function ShareHandoffModal({
+  product,
+  url,
+  onClose,
+}: {
+  product: DraftPreview;
+  url: string;
+  onClose: () => void;
+}) {
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+  const canShare = typeof navigator !== "undefined" && Boolean(navigator.share);
+
+  useEffect(() => {
+    let active = true;
+    setQrDataUrl("");
+
+    QRCode.toDataURL(url, {
+      color: {
+        dark: "#17201d",
+        light: "#ffffff",
+      },
+      margin: 2,
+      width: 220,
+    })
+      .then((dataUrl) => {
+        if (active) setQrDataUrl(dataUrl);
+      })
+      .catch(() => {
+        if (active) setQrDataUrl("");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [url]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  const copyLink = async () => {
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = url;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.append(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1800);
+    } catch {
+      setCopyState("idle");
+    }
+  };
+
+  const shareLink = async () => {
+    if (!navigator.share) {
+      await copyLink();
+      return;
+    }
+
+    try {
+      await navigator.share({
+        title: product.name,
+        text: `${product.name} true-size preview`,
+        url,
+      });
+    } catch {
+      // User dismissed the share sheet.
+    }
+  };
+
+  return (
+    <div
+      className="handoff-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="handoff-modal" role="dialog" aria-modal="true" aria-label="Preview handoff">
+        <button className="modal-close" type="button" onClick={onClose} aria-label="Close">
+          <X size={22} />
+        </button>
+
+        <div className="handoff-heading">
+          <span className="handoff-icon">
+            <QrCode size={24} />
+          </span>
+          <div>
+            <p className="eyebrow">Mobile handoff</p>
+            <h2>Scan to view preview</h2>
+          </div>
+        </div>
+
+        <div className="qr-frame">
+          {qrDataUrl ? (
+            <img src={qrDataUrl} alt="QR code for the product preview link" />
+          ) : (
+            <span>Generating QR</span>
+          )}
+        </div>
+
+        <strong className="handoff-dimensions">{dimensionsLabel(product)}</strong>
+        <p className="handoff-copy">
+          Scan with your phone to open this true-size preview, or copy the link below.
+        </p>
+
+        <div className="preview-link" title={url}>
+          {url}
+        </div>
+
+        <div className="handoff-actions">
+          <button className="primary-action" type="button" onClick={copyLink}>
+            <Copy size={17} />
+            {copyState === "copied" ? "Copied" : "Copy link"}
+          </button>
+          {canShare && (
+            <button className="secondary-action" type="button" onClick={shareLink}>
+              <Share2 size={17} />
+              Share link
+            </button>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -955,311 +1178,6 @@ function UploadedModel({
       <primitive object={preparedScene} />
     </group>
   );
-}
-
-function EightWallArModal({
-  product,
-  onClose,
-}: {
-  product: DraftPreview;
-  onClose: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [message, setMessage] = useState("Starting world tracking");
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return undefined;
-
-    let active = true;
-    startEightWallSession(product, canvas)
-      .then(() => {
-        if (!active) return;
-        setMessage("Move your phone to find the floor");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setMessage(error instanceof Error ? error.message : "AR could not start on this device");
-      });
-
-    return () => {
-      active = false;
-      stopEightWallSession();
-    };
-  }, [product.id]);
-
-  return (
-    <div className="ar-modal" role="dialog" aria-modal="true" aria-label="Camera AR preview">
-      <canvas ref={canvasRef} className="ar-camera-canvas" />
-      <div className="ar-modal-topbar">
-        <span className="ar-modal-product">
-          <strong>{product.name}</strong>
-          <small>{dimensionsLabel(product)}</small>
-        </span>
-        <button className="ar-modal-button" type="button" onClick={onClose}>
-          <X size={18} />
-          Close
-        </button>
-      </div>
-      <div className="ar-modal-hint">
-        <Crosshair size={17} />
-        <span>{message}</span>
-      </div>
-      <button
-        className="ar-recenter"
-        type="button"
-        onClick={() => window.XR8?.XrController?.recenter?.()}
-      >
-        <Crosshair size={17} />
-        Recenter
-      </button>
-    </div>
-  );
-}
-
-let eighthWallSessionRunning = false;
-
-function stopEightWallSession() {
-  if (!eighthWallSessionRunning) return;
-  window.XR8?.stop?.();
-  eighthWallSessionRunning = false;
-}
-
-async function startEightWallSession(product: DraftPreview, canvas: HTMLCanvasElement) {
-  const XR8 = window.XR8;
-  if (!isEightWallReady() || !XR8?.GlTextureRenderer || !XR8.Threejs || !XR8.XrController) {
-    throw new Error("Camera AR is not available in this browser session");
-  }
-
-  stopEightWallSession();
-  window.THREE = THREE;
-  await XR8.loadChunk?.("slam");
-
-  XR8.addCameraPipelineModules(
-    [
-      XR8.GlTextureRenderer.pipelineModule(),
-      XR8.Threejs.pipelineModule(),
-      XR8.XrController.pipelineModule(),
-      window.LandingPage?.pipelineModule?.(),
-      window.XRExtras?.FullWindowCanvas?.pipelineModule?.(),
-      window.XRExtras?.Loading?.pipelineModule?.(),
-      window.XRExtras?.RuntimeError?.pipelineModule?.(),
-      trueSizeArPipelineModule(product),
-    ].filter(Boolean),
-  );
-
-  XR8.run({
-    canvas,
-    allowedDevices: XR8.XrConfig?.device?.().ANY,
-  });
-  eighthWallSessionRunning = true;
-}
-
-function trueSizeArPipelineModule(product: DraftPreview) {
-  return {
-    name: `truesize-ar-${product.id}-${Date.now()}`,
-    onStart: ({ canvas }: { canvas: HTMLCanvasElement }) => {
-      const XR8 = window.XR8;
-      const xrScene = XR8?.Threejs?.xrScene();
-      if (!XR8?.XrController || !xrScene) return;
-
-      const { scene, camera, renderer } = xrScene;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      addTrueSizeArObject(scene, product);
-
-      camera.position.set(0, 1.65, 2.15);
-      XR8.XrController.updateCameraProjectionMatrix({
-        origin: camera.position,
-        facing: camera.quaternion,
-      });
-
-      canvas.addEventListener("touchmove", (event) => event.preventDefault(), {
-        passive: false,
-      });
-      canvas.addEventListener(
-        "touchstart",
-        (event) => {
-          if (event.touches.length === 1) XR8.XrController?.recenter?.();
-        },
-        true,
-      );
-    },
-  };
-}
-
-function addTrueSizeArObject(scene: THREE.Scene, product: DraftPreview) {
-  const dimensions = getSceneDimensionsInMeters(product);
-
-  const root = new THREE.Group();
-  root.name = `TrueSize AR ${product.name}`;
-  scene.add(root);
-
-  const light = new THREE.DirectionalLight(0xffffff, 0.82);
-  light.position.set(3.4, 5, 2.2);
-  light.castShadow = true;
-  root.add(light);
-  root.add(new THREE.AmbientLight(0xffffff, 0.42));
-
-  const shadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(2000, 2000),
-    new THREE.ShadowMaterial({ opacity: 0.32 }),
-  );
-  shadow.rotateX(-Math.PI / 2);
-  shadow.receiveShadow = true;
-  root.add(shadow);
-
-  if (product.previewMethod === "flat" && product.placement === "wall") {
-    addWallArtArObject(root, product, dimensions);
-    return;
-  }
-
-  if (product.previewMethod === "flat" && product.placement === "floor") {
-    addFlatFloorArObject(root, product, dimensions);
-    return;
-  }
-
-  if (product.previewMethod === "model") {
-    addModelArObject(root, dimensions, product.placement === "wall");
-    return;
-  }
-
-  addFloorArObject(root, dimensions, product.placement === "wall");
-}
-
-function addFloorArObject(
-  root: THREE.Group,
-  dimensions: { width: number; height: number; depth: number },
-  wallMounted = false,
-) {
-  const yOffset = wallMounted ? 0.45 : 0;
-  const group = new THREE.Group();
-  group.position.y = yOffset;
-  root.add(group);
-
-  const footprint = new THREE.Mesh(
-    new THREE.PlaneGeometry(dimensions.width, dimensions.depth),
-    new THREE.MeshBasicMaterial({
-      color: 0x1f4d45,
-      opacity: 0.24,
-      side: THREE.DoubleSide,
-      transparent: true,
-    }),
-  );
-  footprint.rotateX(-Math.PI / 2);
-  footprint.position.y = 0.01;
-  group.add(footprint);
-
-  const boxGeometry = new THREE.BoxGeometry(dimensions.width, dimensions.height, dimensions.depth);
-  const box = new THREE.Mesh(
-    boxGeometry,
-    new THREE.MeshPhysicalMaterial({
-      color: 0x9fd7c3,
-      opacity: 0.2,
-      roughness: 0.18,
-      transparent: true,
-    }),
-  );
-  box.position.y = dimensions.height / 2;
-  box.castShadow = true;
-  group.add(box);
-  addEdges(box, boxGeometry, 0x103f37);
-}
-
-function addFlatFloorArObject(
-  root: THREE.Group,
-  product: DraftPreview,
-  dimensions: { width: number; height: number; depth: number },
-) {
-  const texture = new THREE.TextureLoader().load(product.image);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.Mesh(
-    new THREE.PlaneGeometry(dimensions.width, dimensions.depth),
-    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }),
-  );
-  mat.rotateX(-Math.PI / 2);
-  mat.position.y = 0.012;
-  root.add(mat);
-}
-
-function addWallArtArObject(
-  root: THREE.Group,
-  product: DraftPreview,
-  dimensions: { width: number; height: number; depth: number },
-) {
-  const artGeometry = new THREE.PlaneGeometry(dimensions.width, dimensions.height);
-  const texture = new THREE.TextureLoader().load(product.image);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const art = new THREE.Mesh(
-    artGeometry,
-    new THREE.MeshBasicMaterial({
-      map: texture,
-      side: THREE.DoubleSide,
-    }),
-  );
-  art.position.set(0, dimensions.height / 2, -0.02);
-  root.add(art);
-
-  if (!product.frameEnabled) return;
-
-  const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x27231e, roughness: 0.5 });
-  const rail = 0.045;
-  const depth = Math.max(dimensions.depth, 0.035);
-  const bars = [
-    {
-      size: [dimensions.width + rail * 2, rail, depth] as [number, number, number],
-      position: [0, dimensions.height + rail / 2, -0.04] as [number, number, number],
-    },
-    {
-      size: [dimensions.width + rail * 2, rail, depth] as [number, number, number],
-      position: [0, -rail / 2, -0.04] as [number, number, number],
-    },
-    {
-      size: [rail, dimensions.height, depth] as [number, number, number],
-      position: [-(dimensions.width / 2 + rail / 2), dimensions.height / 2, -0.04] as [
-        number,
-        number,
-        number,
-      ],
-    },
-    {
-      size: [rail, dimensions.height, depth] as [number, number, number],
-      position: [dimensions.width / 2 + rail / 2, dimensions.height / 2, -0.04] as [
-        number,
-        number,
-        number,
-      ],
-    },
-  ];
-
-  bars.forEach((bar) => {
-    const geometry = new THREE.BoxGeometry(...bar.size);
-    const mesh = new THREE.Mesh(geometry, frameMaterial);
-    mesh.position.set(...bar.position);
-    mesh.castShadow = true;
-    root.add(mesh);
-  });
-}
-
-function addModelArObject(
-  root: THREE.Group,
-  dimensions: { width: number; height: number; depth: number },
-  wallMounted = false,
-) {
-  const yOffset = wallMounted ? 0.45 : 0;
-  const geometry = new THREE.BoxGeometry(dimensions.width, dimensions.height, dimensions.depth);
-  const model = new THREE.Mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({
-      color: 0xdbe5e1,
-      metalness: 0.08,
-      roughness: 0.42,
-    }),
-  );
-  model.position.y = dimensions.height / 2 + yOffset;
-  model.castShadow = true;
-  root.add(model);
-  addEdges(model, geometry, 0x2d6258);
 }
 
 function addEdges(mesh: THREE.Mesh, geometry: THREE.BufferGeometry, color: number) {
