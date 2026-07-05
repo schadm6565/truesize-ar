@@ -186,6 +186,14 @@ h2 {
   line-height: 1.24;
 }
 
+.mode-arrow {
+  display: none;
+}
+
+.mobile-start-panel {
+  display: none;
+}
+
 .placement-control {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -771,6 +779,9 @@ select {
 
   .simple-shell {
     width: min(100% - 24px, 720px);
+    display: flex;
+    min-height: calc(100dvh - 59px);
+    flex-direction: column;
     padding-top: 14px;
   }
 
@@ -780,29 +791,93 @@ select {
 
   .mode-grid {
     grid-template-columns: 1fr;
-    gap: 8px;
-    margin-bottom: 0;
+    gap: 10px;
+    margin-bottom: 14px;
   }
 
   .mode-card {
-    grid-template-columns: 40px minmax(0, 1fr);
-    min-height: 64px;
+    grid-template-columns: 40px minmax(0, 1fr) 18px;
+    min-height: 92px;
     align-items: center;
-    padding: 12px;
+    gap: 12px;
+    padding: 14px;
   }
 
   .mode-card strong {
-    margin-bottom: 0;
+    margin-bottom: 5px;
     font-size: 18px;
   }
 
   .mode-card small {
-    display: none;
+    display: block;
+    max-width: 30rem;
+    font-size: 13px;
+    line-height: 1.28;
   }
 
   .mode-icon {
     width: 40px;
     height: 40px;
+  }
+
+  .mode-arrow {
+    display: block;
+    color: #60706a;
+  }
+
+  .mode-card.active .mode-arrow {
+    color: #1f4d45;
+  }
+
+  .mobile-start-panel {
+    display: grid;
+    gap: 12px;
+    margin-top: auto;
+    padding: 14px;
+    border: 1px solid rgba(23, 32, 29, 0.1);
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(237, 246, 239, 0.84), rgba(255, 255, 255, 0.96)),
+      #ffffff;
+    box-shadow: 0 18px 50px rgba(23, 32, 29, 0.08);
+  }
+
+  .mobile-start-panel .eyebrow {
+    margin-bottom: 4px;
+  }
+
+  .mobile-start-panel h2 {
+    margin-bottom: 6px;
+    font-size: 20px;
+  }
+
+  .mobile-start-panel p:not(.eyebrow) {
+    color: #637069;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .mobile-start-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mobile-start-meta span {
+    display: inline-flex;
+    min-height: 30px;
+    align-items: center;
+    gap: 6px;
+    border-radius: 8px;
+    background: #edf1ee;
+    color: #49534e;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 760;
+  }
+
+  .mobile-start-action {
+    width: 100%;
   }
 
   .desktop-workspace {

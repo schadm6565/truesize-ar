@@ -2,6 +2,7 @@ import { Canvas, useLoader, useThree } from "@react-three/fiber";
 import { Edges, OrbitControls, PerspectiveCamera, useGLTF } from "@react-three/drei";
 import {
   Box,
+  ChevronRight,
   Copy,
   Camera,
   Frame,
@@ -434,13 +435,33 @@ function App() {
                 <span className="mode-icon">
                   <MethodIcon size={22} />
                 </span>
-                <span>
+                <span className="mode-copy">
                   <strong>{methodLabels[method]}</strong>
                   <small>{methodDescriptions[method]}</small>
                 </span>
+                <ChevronRight className="mode-arrow" size={18} aria-hidden="true" />
               </button>
             );
           })}
+        </section>
+
+        <section className="mobile-start-panel" aria-label="Selected preview setup">
+          <div>
+            <p className="eyebrow">Selected setup</p>
+            <h2>{methodLabels[product.previewMethod]}</h2>
+            <p>{methodDescriptions[product.previewMethod]}</p>
+          </div>
+          <div className="mobile-start-meta">
+            <span>
+              <Ruler size={14} />
+              {dimensionsLabel(product)}
+            </span>
+            <span>{placementLabels[product.placement]}</span>
+          </div>
+          <button className="primary-action mobile-start-action" type="button" onClick={() => setMobileEditorOpen(true)}>
+            Edit preview
+            <ChevronRight size={17} />
+          </button>
         </section>
 
         <section className="workspace-grid desktop-workspace">
