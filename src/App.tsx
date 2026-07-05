@@ -911,17 +911,27 @@ function MobileCameraPreview({
   onShare: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const worldHostRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [status, setStatus] = useState<"starting" | "running" | "error">("starting");
-  const [message, setMessage] = useState("Starting camera");
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sessionRef = useRef<XRSession | null>(null);
+  const hitTestSourceRef = useRef<XRHitTestSource | null>(null);
+  const reticleRef = useRef<THREE.Mesh | null>(null);
+  const objectRef = useRef<THREE.Group | null>(null);
+  const placedRef = useRef(false);
+  const [status, setStatus] = useState<NativeXrMode>("starting");
+  const [message, setMessage] = useState("Checking world tracking");
 
   useEffect(() => {
     let active = true;
+    const cleanups: Array<() => void> = [];
 
-    const startCamera = async () => {
+    const startCameraFallback = async (
+      fallbackMessage = "World tracking is not available in this browser. Camera fallback active.",
+    ) => {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
         setStatus("error");
-        setMessage("Camera preview needs HTTPS. Use the share link on your phone.");
+        setMessage("Camera and world tracking need HTTPS. Use the share link on your phone.");
         return;
       }
 
@@ -945,8 +955,8 @@ function MobileCameraPreview({
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-        setStatus("running");
-        setMessage("Camera preview active");
+        setStatus("fallback");
+        setMessage(fallbackMessage);
       } catch {
         if (!active) return;
         setStatus("error");
@@ -954,10 +964,155 @@ function MobileCameraPreview({
       }
     };
 
-    startCamera();
+    const startWorldTracking = async () => {
+      const host = worldHostRef.current;
+      const xr = navigator.xr;
+      if (!host || !window.isSecureContext || !xr) return false;
+
+      const supported = await xr.isSessionSupported("immersive-ar").catch(() => false);
+      if (!supported || !active) return false;
+
+      const renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: true,
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      renderer.xr.setReferenceSpaceType("local");
+      renderer.domElement.className = "world-canvas";
+      host.append(renderer.domElement);
+      rendererRef.current = renderer;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x72817a, 1.25));
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+      keyLight.position.set(2.5, 4.2, 2.5);
+      scene.add(keyLight);
+
+      const productObject = createMobileWorldObject(product);
+      productObject.visible = false;
+      scene.add(productObject);
+      objectRef.current = productObject;
+
+      const reticleGeometry = new THREE.RingGeometry(0.11, 0.14, 36).rotateX(-Math.PI / 2);
+      const reticleMaterial = new THREE.MeshBasicMaterial({
+        color: 0x9fd7c3,
+        opacity: 0.95,
+        transparent: true,
+      });
+      const reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+      reticleRef.current = reticle;
+
+      const session = await xr.requestSession("immersive-ar", {
+        requiredFeatures: ["hit-test"],
+        optionalFeatures: ["dom-overlay"],
+        domOverlay: { root: host },
+      });
+      sessionRef.current = session;
+
+      if (!session.requestHitTestSource) {
+        await session.end();
+        return false;
+      }
+
+      await renderer.xr.setSession(session);
+      const viewerSpace = await session.requestReferenceSpace("viewer");
+      const localSpace = await session.requestReferenceSpace("local");
+      const hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+      if (!hitTestSource) {
+        await session.end();
+        return false;
+      }
+      hitTestSourceRef.current = hitTestSource;
+
+      const disposeWorld = () => {
+        hitTestSourceRef.current?.cancel();
+        hitTestSourceRef.current = null;
+        renderer.setAnimationLoop(null);
+        renderer.domElement.remove();
+        disposeObject3D(scene);
+        renderer.dispose();
+        rendererRef.current = null;
+        sessionRef.current = null;
+      };
+
+      const handleSessionEnd = () => {
+        disposeWorld();
+        if (active) void startCameraFallback("AR session ended. Camera fallback active.");
+      };
+
+      const placeObject = (event: PointerEvent) => {
+        event.preventDefault();
+        const currentReticle = reticleRef.current;
+        const currentObject = objectRef.current;
+        if (!currentReticle?.visible || !currentObject) return;
+
+        currentObject.matrix.copy(currentReticle.matrix);
+        currentObject.matrix.decompose(currentObject.position, currentObject.quaternion, currentObject.scale);
+        currentObject.visible = true;
+        placedRef.current = true;
+        setStatus("placed");
+        setMessage("True-size preview placed. Tap another surface to move it.");
+      };
+
+      host.addEventListener("pointerdown", placeObject);
+      session.addEventListener("end", handleSessionEnd, { once: true });
+      cleanups.push(() => {
+        host.removeEventListener("pointerdown", placeObject);
+        session.removeEventListener("end", handleSessionEnd);
+        if (sessionRef.current) void sessionRef.current.end().catch(() => undefined);
+        disposeWorld();
+      });
+
+      let surfaceMessageShown = false;
+      setStatus("tracking");
+      setMessage("Move your phone slowly to find a surface.");
+
+      renderer.setAnimationLoop((_time, frame) => {
+        const source = hitTestSourceRef.current;
+        const currentReticle = reticleRef.current;
+        if (!source || !currentReticle) return;
+
+        const hits = frame.getHitTestResults(source);
+        if (hits.length > 0) {
+          const pose = hits[0].getPose(localSpace);
+          if (pose) {
+            currentReticle.visible = true;
+            currentReticle.matrix.fromArray(pose.transform.matrix);
+            if (!placedRef.current && !surfaceMessageShown) {
+              surfaceMessageShown = true;
+              setMessage("Surface found. Tap to place the true-size object.");
+            }
+          }
+        } else {
+          currentReticle.visible = false;
+          surfaceMessageShown = false;
+          if (!placedRef.current) setMessage("Move your phone slowly to find a surface.");
+        }
+
+        renderer.render(scene, camera);
+      });
+
+      return true;
+    };
+
+    startWorldTracking()
+      .then((started) => {
+        if (!started && active) void startCameraFallback();
+      })
+      .catch(() => {
+        if (active) void startCameraFallback();
+      });
 
     return () => {
       active = false;
+      cleanups.forEach((cleanup) => cleanup());
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     };
@@ -980,8 +1135,17 @@ function MobileCameraPreview({
     onShare();
   };
 
+  const isWorldTracking = status === "tracking" || status === "placed";
+  const canShareFromOverlay = status === "fallback" || status === "error";
+
   return (
-    <div className="camera-preview" role="dialog" aria-modal="true" aria-label="Mobile camera preview">
+    <div
+      className={`camera-preview ${isWorldTracking ? "world-tracking" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Mobile product preview"
+    >
+      <div ref={worldHostRef} className="camera-world-host" />
       <video ref={videoRef} className="camera-video" playsInline muted />
       <div className="camera-shade" />
 
@@ -995,17 +1159,19 @@ function MobileCameraPreview({
         </button>
       </div>
 
-      <div className="camera-size-guide">
-        <span>{product.previewMethod === "flat" ? "Flat preview" : methodLabels[product.previewMethod]}</span>
-        <strong>{dimensionsLabel(product)}</strong>
-      </div>
+      {!isWorldTracking && (
+        <div className="camera-size-guide">
+          <span>{status === "fallback" ? "Camera fallback" : methodLabels[product.previewMethod]}</span>
+          <strong>{dimensionsLabel(product)}</strong>
+        </div>
+      )}
 
       <div className="camera-status">
-        <Camera size={17} />
+        {isWorldTracking ? <Box size={17} /> : <Camera size={17} />}
         <span>{message}</span>
       </div>
 
-      {status === "error" && (
+      {canShareFromOverlay && (
         <button className="camera-share" type="button" onClick={shareLink}>
           <Share2 size={17} />
           Share link
@@ -1013,6 +1179,160 @@ function MobileCameraPreview({
       )}
     </div>
   );
+}
+
+function createMobileWorldObject(product: DraftPreview) {
+  const dimensions = getSceneDimensionsInMeters(product);
+  const group = new THREE.Group();
+  const edgeColor = 0x1f4d45;
+
+  if (product.previewMethod === "flat" && product.placement === "floor") {
+    const texture = new THREE.TextureLoader().load(product.image);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+
+    const geometry = new THREE.PlaneGeometry(dimensions.width, dimensions.depth);
+    const mesh = new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.72,
+        side: THREE.DoubleSide,
+      }),
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = 0.012;
+    group.add(mesh);
+    addPlaneOutline(group, dimensions.width, dimensions.depth, 0.018);
+    return group;
+  }
+
+  if (product.previewMethod === "flat") {
+    const texture = new THREE.TextureLoader().load(product.image);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+
+    const artGroup = new THREE.Group();
+    artGroup.position.y = dimensions.height / 2;
+    const geometry = new THREE.PlaneGeometry(dimensions.width, dimensions.height);
+    const mesh = new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.72,
+        side: THREE.DoubleSide,
+      }),
+    );
+    artGroup.add(mesh);
+
+    if (product.frameEnabled) {
+      const rail = Math.max(0.025, Math.min(dimensions.width, dimensions.height) * 0.045);
+      const depth = Math.max(dimensions.depth, 0.025);
+      const rails = [
+        {
+          args: [dimensions.width + rail * 2, rail, depth] as [number, number, number],
+          position: [0, dimensions.height / 2 + rail / 2, depth / 2] as [number, number, number],
+        },
+        {
+          args: [dimensions.width + rail * 2, rail, depth] as [number, number, number],
+          position: [0, -dimensions.height / 2 - rail / 2, depth / 2] as [number, number, number],
+        },
+        {
+          args: [rail, dimensions.height, depth] as [number, number, number],
+          position: [-(dimensions.width / 2 + rail / 2), 0, depth / 2] as [number, number, number],
+        },
+        {
+          args: [rail, dimensions.height, depth] as [number, number, number],
+          position: [dimensions.width / 2 + rail / 2, 0, depth / 2] as [number, number, number],
+        },
+      ];
+
+      rails.forEach((railMesh) => {
+        const railGeometry = new THREE.BoxGeometry(...railMesh.args);
+        const meshRail = new THREE.Mesh(
+          railGeometry,
+          new THREE.MeshStandardMaterial({ color: 0x26231e, roughness: 0.55 }),
+        );
+        meshRail.position.set(...railMesh.position);
+        artGroup.add(meshRail);
+      });
+    } else {
+      addEdges(mesh, geometry, edgeColor);
+    }
+
+    group.add(artGroup);
+    return group;
+  }
+
+  if (product.previewMethod === "box") {
+    addPlaneOutline(group, dimensions.width, dimensions.depth, 0.018);
+    const geometry = new THREE.BoxGeometry(dimensions.width, dimensions.height, dimensions.depth);
+    const mesh = new THREE.Mesh(
+      geometry,
+      new THREE.MeshPhysicalMaterial({
+        color: 0x9fd7c3,
+        opacity: 0.24,
+        roughness: 0.22,
+        transparent: true,
+        transmission: 0.38,
+      }),
+    );
+    mesh.position.y = dimensions.height / 2;
+    addEdges(mesh, geometry, edgeColor);
+    group.add(mesh);
+    return group;
+  }
+
+  const geometry = new THREE.BoxGeometry(dimensions.width, dimensions.height, dimensions.depth);
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color: 0xdbe5e1,
+      metalness: 0.08,
+      roughness: 0.42,
+    }),
+  );
+  mesh.position.y = dimensions.height / 2;
+  addEdges(mesh, geometry, 0x2d6258);
+  group.add(mesh);
+  return group;
+}
+
+function addPlaneOutline(group: THREE.Group, width: number, depth: number, y: number) {
+  const geometry = new THREE.PlaneGeometry(width, depth);
+  const fill = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color: 0x1f4d45,
+      opacity: 0.18,
+      roughness: 0.8,
+      side: THREE.DoubleSide,
+      transparent: true,
+    }),
+  );
+  fill.rotation.x = -Math.PI / 2;
+  fill.position.y = y - 0.006;
+  group.add(fill);
+
+  const outline = new THREE.Mesh(
+    geometry.clone(),
+    new THREE.MeshBasicMaterial({
+      color: 0x1f4d45,
+      wireframe: true,
+    }),
+  );
+  outline.rotation.x = -Math.PI / 2;
+  outline.position.y = y;
+  group.add(outline);
+}
+
+function disposeObject3D(object: THREE.Object3D) {
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.geometry.dispose();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => material.dispose());
+  });
 }
 
 function TrueSizeScene({ product }: { product: DraftPreview }) {
