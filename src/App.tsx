@@ -26,27 +26,6 @@ type Placement = "floor" | "wall";
 type DimensionField = "width" | "height" | "depth";
 type NativeXrMode = "starting" | "tracking" | "placed" | "fallback" | "error";
 
-type NativeXrHitTestSource = {
-  cancel?: () => void;
-};
-
-type NativeXrReferenceSpace = object;
-
-type NativeXrHitTestResult = {
-  getPose: (space: NativeXrReferenceSpace) => { transform: { matrix: Float32Array } } | null;
-};
-
-type NativeXrFrame = {
-  getHitTestResults: (source: NativeXrHitTestSource) => NativeXrHitTestResult[];
-};
-
-type NativeXrSession = {
-  addEventListener: (type: "end", listener: () => void) => void;
-  end: () => Promise<void>;
-  requestHitTestSource: (options: { space: NativeXrReferenceSpace }) => Promise<NativeXrHitTestSource>;
-  requestReferenceSpace: (type: "local" | "viewer") => Promise<NativeXrReferenceSpace>;
-};
-
 type DraftPreview = {
   id: string;
   name: string;
