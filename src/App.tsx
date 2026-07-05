@@ -3,23 +3,20 @@ import { Edges, OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import {
   Box,
   Check,
-  Copy,
   Crosshair,
   Frame,
   Image as ImageIcon,
   Package,
   Ruler,
-  Share2,
   Smartphone,
   Upload,
   X,
 } from "lucide-react";
 import { ChangeEvent, CSSProperties, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { imageOptions } from "./data/products";
 import type { Unit } from "./types/product";
 
-const STORAGE_KEY = "truesize-ar-method-v2";
+const STORAGE_KEY = "truesize-ar-method-v3";
 
 type PreviewMethod = "flat" | "box" | "model";
 type Placement = "floor" | "wall";
@@ -90,8 +87,8 @@ const methodLabels: Record<PreviewMethod, string> = {
 };
 
 const methodDescriptions: Record<PreviewMethod, string> = {
-  flat: "Use an image for rugs, mats, posters, paintings, mirrors, and decals.",
-  box: "Use a true-size box for bulky products like couches, fridges, desks, and cabinets.",
+  flat: "Use an uploaded image for flat products such as mats, prints, signs, and decals.",
+  box: "Use a true-size box for bulky products where an image is not enough.",
   model: "Upload a GLB and scale it for floor or wall placement.",
 };
 
@@ -108,15 +105,15 @@ const placementLabels: Record<Placement, string> = {
 
 const defaultPreview: DraftPreview = {
   id: "truesize-preview",
-  name: "Framed Wall Print",
+  name: "Product preview",
   previewMethod: "flat",
   placement: "wall",
   width: 70,
   height: 100,
   depth: 4,
   unit: "cm",
-  image: "/product-wall-print.svg",
-  imageLabel: "Gallery print",
+  image: "/placeholder-product.svg",
+  imageLabel: "",
   frameEnabled: true,
 };
 
@@ -185,10 +182,6 @@ function dimensionsLabel(product: DraftPreview) {
   return `${pieces.join(" x ")} ${product.unit}`;
 }
 
-function getPreviewUrl() {
-  return "truesize.builtbychad.com/preview";
-}
-
 function isEightWallReady() {
   return Boolean(
     window.XR8?.GlTextureRenderer &&
@@ -200,31 +193,31 @@ function isEightWallReady() {
 function defaultsFor(method: PreviewMethod, placement: Placement): Partial<DraftPreview> {
   if (method === "flat" && placement === "wall") {
     return {
-      name: "Framed Wall Print",
+      name: "Product preview",
       width: 70,
       height: 100,
       depth: 4,
-      image: "/product-wall-print.svg",
-      imageLabel: "Gallery print",
+      image: "/placeholder-product.svg",
+      imageLabel: "",
       frameEnabled: true,
     };
   }
 
   if (method === "flat" && placement === "floor") {
     return {
-      name: "Woven Floor Mat",
+      name: "Product preview",
       width: 90,
       height: 60,
       depth: 2,
-      image: "/product-desk.svg",
-      imageLabel: "Office desk",
+      image: "/placeholder-product.svg",
+      imageLabel: "",
       frameEnabled: false,
     };
   }
 
   if (method === "box" && placement === "wall") {
     return {
-      name: "Wall Cabinet",
+      name: "Product preview",
       width: 90,
       height: 70,
       depth: 32,
@@ -234,7 +227,7 @@ function defaultsFor(method: PreviewMethod, placement: Placement): Partial<Draft
 
   if (method === "box" && placement === "floor") {
     return {
-      name: "Charcoal Couch",
+      name: "Product preview",
       width: 214,
       height: 82,
       depth: 92,
@@ -243,7 +236,7 @@ function defaultsFor(method: PreviewMethod, placement: Placement): Partial<Draft
   }
 
   return {
-    name: "Product Model",
+    name: "Product preview",
     width: 80,
     height: 80,
     depth: 80,
@@ -254,7 +247,6 @@ function defaultsFor(method: PreviewMethod, placement: Placement): Partial<Draft
 function App() {
   const [product, setProduct] = useState<DraftPreview>(loadPreview);
   const [saved, setSaved] = useState(false);
-  const [arOpened, setArOpened] = useState(false);
   const [arModalOpen, setArModalOpen] = useState(false);
   const [arState, setArState] = useState<ArStatus>(() =>
     typeof window !== "undefined" && isEightWallReady() ? "ready" : "checking",
@@ -340,7 +332,6 @@ function App() {
   };
 
   const openAr = () => {
-    setArOpened(true);
     if (isEightWallReady()) {
       setArState("starting");
       setArModalOpen(true);
@@ -411,8 +402,6 @@ function App() {
           />
 
           <PreviewPanel
-            arOpened={arOpened}
-            arState={arState}
             product={product}
             onOpenAr={openAr}
           />
@@ -535,20 +524,6 @@ function ConfiguratorPanel({
         {product.previewMethod === "flat" && (
           <div className="field-group">
             <span className="field-heading">Product image</span>
-            <div className="image-picker">
-              {imageOptions.map((option) => (
-                <button
-                  className={`image-option ${product.image === option.value ? "active" : ""}`}
-                  key={option.value}
-                  onClick={() => onUpdate({ image: option.value, imageLabel: option.label })}
-                  type="button"
-                >
-                  <img src={option.value} alt="" />
-                  <span>{option.label}</span>
-                </button>
-              ))}
-            </div>
-
             <label className="upload-control">
               <Upload size={17} />
               <span>{product.imageLabel ? `Using ${product.imageLabel}` : "Upload product image"}</span>
@@ -624,13 +599,9 @@ function DimensionInput({
 }
 
 function PreviewPanel({
-  arOpened,
-  arState,
   product,
   onOpenAr,
 }: {
-  arOpened: boolean;
-  arState: ArStatus;
   product: DraftPreview;
   onOpenAr: () => void;
 }) {
@@ -660,46 +631,6 @@ function PreviewPanel({
           <Smartphone size={18} />
           View in your space
         </button>
-        <button className="secondary-action wide" disabled type="button">
-          <Copy size={17} />
-          Share link later
-        </button>
-      </div>
-
-      <div className={`ar-state ${arOpened ? "active" : ""}`}>
-        <span className="ar-state-icon">
-          {arState === "ready" || arState === "running" || arState === "starting" ? (
-            <Share2 size={17} />
-          ) : (
-            <ImageIcon size={17} />
-          )}
-        </span>
-        <span>
-          <strong>
-            {arState === "ready" && "8th Wall SLAM ready"}
-            {arState === "starting" && "Starting SLAM session"}
-            {arState === "running" && "8th Wall SLAM active"}
-            {arState === "checking" && "Checking AR engine"}
-            {arState === "fallback" && "Mobile AR ready"}
-            {arState === "error" && "Interactive preview ready"}
-          </strong>
-          <small>
-            {arState === "ready" && "Uses camera/world tracking when opened on a supported phone."}
-            {arState === "starting" && "A camera prompt may appear on supported mobile browsers."}
-            {arState === "running" && "The preview is placed using world tracking."}
-            {arState === "checking" && "The preview works while the AR engine loads."}
-            {arState === "fallback" && "Use this interactive preview or open the demo on mobile."}
-            {arState === "error" && "This device could not start camera AR."}
-          </small>
-        </span>
-      </div>
-
-      <div className="share-strip" aria-disabled="true">
-        <span>
-          <strong>Shareable preview</strong>
-          <small>{getPreviewUrl()}</small>
-        </span>
-        <span>Later</span>
       </div>
     </section>
   );
@@ -983,7 +914,7 @@ function stopEightWallSession() {
 async function startEightWallSession(product: DraftPreview, canvas: HTMLCanvasElement) {
   const XR8 = window.XR8;
   if (!isEightWallReady() || !XR8?.GlTextureRenderer || !XR8.Threejs || !XR8.XrController) {
-    throw new Error("8th Wall SLAM is not available in this browser session");
+    throw new Error("Camera AR is not available in this browser session");
   }
 
   stopEightWallSession();
