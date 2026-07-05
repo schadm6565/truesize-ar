@@ -12,7 +12,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { ChangeEvent, CSSProperties, useEffect, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { Unit } from "./types/product";
 
@@ -584,11 +584,7 @@ function PreviewPanel({
       </div>
 
       <div className="preview-stage">
-        {product.previewMethod === "flat" && product.placement === "wall" ? (
-          <WallImagePreview product={product} />
-        ) : (
-          <TrueSizeScene product={product} />
-        )}
+        <TrueSizeScene product={product} />
       </div>
 
       <div className="preview-actions">
@@ -598,32 +594,6 @@ function PreviewPanel({
         </button>
       </div>
     </section>
-  );
-}
-
-function WallImagePreview({ product }: { product: DraftPreview }) {
-  const dimensions = getDimensionsInCm(product);
-  const aspect = Math.max(0.22, dimensions.width / Math.max(dimensions.height, 1));
-  const width = Math.min(420, Math.max(110, dimensions.width * 4));
-
-  const style = {
-    "--art-width": `${width}px`,
-    "--art-aspect": `${aspect}`,
-  } as CSSProperties;
-
-  return (
-    <div className="wall-room" style={style}>
-      <div className={`wall-art ${product.frameEnabled ? "framed" : "unframed"}`}>
-        <img src={product.image} alt="" />
-      </div>
-      <div className="wall-console" aria-hidden="true">
-        <span />
-      </div>
-      <div className="wall-scale">
-        <span>W {formatDimension(product.width)} {product.unit}</span>
-        <span>H {formatDimension(product.height)} {product.unit}</span>
-      </div>
-    </div>
   );
 }
 
@@ -642,7 +612,7 @@ function SceneContent({ product }: { product: DraftPreview }) {
   const narrowCanvas = size.width < 460;
   const maxScale = narrowCanvas ? 0.98 : 1.25;
   const fitScale = Math.min(maxScale, (narrowCanvas ? 2.15 : 2.9) / maxDimension);
-  const hasWallBackdrop = product.placement === "wall" && product.previewMethod !== "flat";
+  const hasWallBackdrop = product.placement === "wall";
 
   return (
     <>
@@ -663,6 +633,9 @@ function SceneContent({ product }: { product: DraftPreview }) {
         {hasWallBackdrop && <WallBackdrop dimensions={meters} />}
         {product.previewMethod === "flat" && product.placement === "floor" && (
           <FlatFloorImage product={product} dimensions={meters} />
+        )}
+        {product.previewMethod === "flat" && product.placement === "wall" && (
+          <FlatWallImage product={product} dimensions={meters} />
         )}
         {product.previewMethod === "box" && (
           <SizeBox dimensions={meters} wallMounted={product.placement === "wall"} />
@@ -717,6 +690,105 @@ function FlatFloorImage({
         <meshBasicMaterial color="#1f4d45" wireframe />
       </mesh>
     </group>
+  );
+}
+
+function FlatWallImage({
+  product,
+  dimensions,
+}: {
+  product: DraftPreview;
+  dimensions: { width: number; height: number; depth: number };
+}) {
+  const texture = useLoader(THREE.TextureLoader, product.image);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+
+  const wallZ = -dimensions.depth / 2 - 0.035;
+  const artZ = wallZ + 0.018;
+  const rail = Math.max(0.028, Math.min(dimensions.width, dimensions.height) * 0.045);
+  const frameDepth = Math.max(dimensions.depth, 0.035);
+  const yOffset = 0.45;
+
+  return (
+    <group position={[0, yOffset, 0]}>
+      <mesh receiveShadow position={[0, dimensions.height / 2, wallZ + 0.006]}>
+        <planeGeometry args={[dimensions.width + rail * 2.4, dimensions.height + rail * 2.4]} />
+        <meshStandardMaterial
+          color="#26231e"
+          opacity={0.08}
+          roughness={0.85}
+          side={THREE.DoubleSide}
+          transparent
+        />
+      </mesh>
+      <mesh castShadow position={[0, dimensions.height / 2, artZ]}>
+        <planeGeometry args={[dimensions.width, dimensions.height]} />
+        <meshStandardMaterial map={texture} roughness={0.72} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, dimensions.height / 2, artZ + 0.004]}>
+        <planeGeometry args={[dimensions.width, dimensions.height]} />
+        <meshBasicMaterial color="#1f4d45" opacity={0.24} transparent wireframe />
+      </mesh>
+      {product.frameEnabled ? (
+        <FrameRails
+          depth={frameDepth}
+          height={dimensions.height}
+          rail={rail}
+          width={dimensions.width}
+          z={artZ + frameDepth / 2}
+        />
+      ) : (
+        <mesh position={[0, dimensions.height / 2, artZ + 0.006]}>
+          <boxGeometry args={[dimensions.width, dimensions.height, 0.012]} />
+          <meshBasicMaterial color="#1f4d45" wireframe />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function FrameRails({
+  depth,
+  height,
+  rail,
+  width,
+  z,
+}: {
+  depth: number;
+  height: number;
+  rail: number;
+  width: number;
+  z: number;
+}) {
+  const bars = [
+    {
+      args: [width + rail * 2, rail, depth] as [number, number, number],
+      position: [0, height + rail / 2, z] as [number, number, number],
+    },
+    {
+      args: [width + rail * 2, rail, depth] as [number, number, number],
+      position: [0, -rail / 2, z] as [number, number, number],
+    },
+    {
+      args: [rail, height, depth] as [number, number, number],
+      position: [-(width / 2 + rail / 2), height / 2, z] as [number, number, number],
+    },
+    {
+      args: [rail, height, depth] as [number, number, number],
+      position: [width / 2 + rail / 2, height / 2, z] as [number, number, number],
+    },
+  ];
+
+  return (
+    <>
+      {bars.map((bar, index) => (
+        <mesh castShadow key={index} position={bar.position}>
+          <boxGeometry args={bar.args} />
+          <meshStandardMaterial color="#26231e" roughness={0.5} />
+        </mesh>
+      ))}
+    </>
   );
 }
 
